@@ -1,0 +1,30 @@
+html { height:100%; background:#101419; }
+body { overscroll-behavior:none; }
+.app { height:100dvh; padding-top:env(safe-area-inset-top); }
+header { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:10px; }
+.app-title { display:flex; flex-direction:column; gap:2px; min-width:0; }
+#connection-origin { min-width:0; max-width:100%; font-size:10px; color:#94a3b1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#connection-settings { white-space:nowrap; }
+#connection-settings { font-size:12px; padding:5px 9px; }
+#status { text-align:right; flex:1; overflow-wrap:anywhere; }
+dialog { width:min(430px,calc(100vw - 32px)); box-sizing:border-box; color:#e9eef3; background:#171d24; border:1px solid #2b3641; border-radius:18px; padding:24px; max-height:calc(100dvh - 48px); overflow:auto; }
+dialog::backdrop { background:rgba(5,8,12,.86); }
+dialog h2 { font-size:23px; margin:8px 0 10px; }
+dialog p { color:#94a3b1; font-size:14px; }
+dialog label { font-size:14px; display:block; margin-bottom:8px; }
+#connection-link { min-height:110px; width:100%; box-sizing:border-box; resize:vertical; font-size:14px; }
+dialog input { width:100%; min-width:0; box-sizing:border-box; padding:12px; color:#e9eef3; background:#101419; border:1px solid #2b3641; border-radius:7px; font:inherit; }
+#pair-code { font-size:22px; letter-spacing:2px; text-transform:uppercase; }
+#pair-hint { font-size:12px; }
+#connect-device { width:100%; margin:6px 0 14px; }
+#connection-options { font-size:13px; margin-top:6px; }
+#connection-options summary { cursor:pointer; color:#94a3b1; margin-bottom:12px; }
+#connection-options label { margin-top:12px; }
+.connection-actions { display:flex; gap:10px; margin-top:14px; }
+.connection-actions button { flex:1; }
+#connect-device { background:#67d3a2; color:#092017; font-weight:700; }
+#connect-device:disabled { opacity:.5; }
+#connection-feedback { min-height:42px; margin:12px 0 6px; overflow-wrap:anywhere; font-size:13px; }
+.settings-footer { display:flex; justify-content:space-between; gap:12px; }
+.settings-footer button { font-size:12px; padding:5px 9px; }
+.app-emblem { width:48px; height:48px; border-radius:12px; background:#67d3a2; color:#092017; display:grid; place-items:center; font-size:27px; font-weight:800; }

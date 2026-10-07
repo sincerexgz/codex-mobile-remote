@@ -1,0 +1,9 @@
+{
+  "appId": "com.codexremote.mobile",
+  "appName": "Codex 远程",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#101419"
+  }
+}

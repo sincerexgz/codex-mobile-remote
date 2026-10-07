@@ -1,0 +1,21 @@
+{
+  "name": "codex-mobile-remote",
+  "version": "1.2.2",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted mobile access to a paired Windows Codex desktop",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node relay.js",
+    "start:relay": "node relay.js",
+    "start:pair": "node pair-agent.mjs",
+    "build:connector": "node deploy/build-connector.mjs",
+    "build:cloud": "node deploy/build-bundle.mjs"
+  },
+  "dependencies": {
+    "ws": "8.22.0"
+  }
+}

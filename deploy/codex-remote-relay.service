@@ -1,0 +1,26 @@
+[Unit]
+Description=Codex Mobile Cloud Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=codexremote
+Group=codexremote
+WorkingDirectory=/opt/codex-mobile-remote
+EnvironmentFile=/etc/codex-mobile-remote.env
+Environment=RELAY_STATE_FILE=/var/lib/codex-mobile-remote/state.json
+ExecStart=/usr/bin/node /opt/codex-mobile-remote/relay.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StateDirectory=codex-mobile-remote
+StateDirectoryMode=0700
+UMask=0077
+MemoryMax=384M
+
+[Install]
+WantedBy=multi-user.target

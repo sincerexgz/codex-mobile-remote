@@ -1,0 +1,30 @@
+server {
+    listen 80;
+    server_name REMOTE_HOST;
+    access_log off;
+    location /.well-known/acme-challenge/ { root /var/www/codex-acme; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    server_name REMOTE_HOST;
+    ssl_certificate /etc/letsencrypt/live/codex-mobile-remote/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/codex-mobile-remote/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log off;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Content-Type-Options nosniff always;
+    client_max_body_size 128k;
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_read_timeout 90s;
+    }
+}

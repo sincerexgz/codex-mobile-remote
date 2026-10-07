@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101419">
+  <title>Codex 对话同步</title>
+  <style>
+    :root { color-scheme: dark; --bg:#101419; --panel:#171d24; --line:#2b3641; --text:#e9eef3; --muted:#94a3b1; --accent:#67d3a2; --user:#1b2930; }
+    * { box-sizing:border-box }
+    html { width:100%; height:100%; overflow-x:hidden; -webkit-text-size-adjust:100%; text-size-adjust:100% }
+    body { margin:0; width:100%; min-width:0; overflow-x:hidden; background:var(--bg); color:var(--text); font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif }
+    .app { width:100%; min-width:0; height:100dvh; max-width:900px; margin:auto; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto minmax(0,1fr) auto auto; overflow:hidden }
+    .app > * { min-width:0; max-width:100% }
+    header { padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); background:#12181e }
+    h1 { margin:0; font-size:16px }
+    #status { min-width:0; overflow-wrap:anywhere; font-size:12px; color:var(--muted) }
+    .selectrow { display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line) }
+    select,button,textarea { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:7px }
+    select { flex:1 1 0; width:0; min-width:0; padding:10px }
+    .selectrow > button { flex:none }
+    select optgroup { color:var(--muted); font-weight:700 }
+    button { padding:9px 14px; cursor:pointer }
+    #messages { min-height:0; overflow-y:auto; overflow-x:hidden; padding:14px 12px; scroll-behavior:smooth }
+    .empty { color:var(--muted); text-align:center; margin:22vh 0 }
+    .message { width:100%; min-width:0; margin:0 auto 18px; max-width:780px }
+    .message.user { padding:12px 14px; background:var(--user); border:1px solid #28363d; border-radius:12px }
+    .role { color:var(--muted); font-size:12px; margin-bottom:5px }
+    .body { min-width:0; max-width:100%; overflow-wrap:anywhere }
+    .body p:first-child { margin-top:0 } .body p:last-child { margin-bottom:0 }
+    .body pre { max-width:100%; padding:12px; background:#0b0f13; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:7px; border:1px solid var(--line) }
+    .body pre code { white-space:inherit; overflow-wrap:inherit }
+    .body img,.body video,.body svg,.body canvas { max-width:100%; height:auto }
+    .body table { width:100%; max-width:100%; table-layout:fixed; border-collapse:collapse }
+    .body th,.body td { overflow-wrap:anywhere; white-space:normal; padding:6px; border:1px solid var(--line) }
+    .body blockquote { margin:12px 0; padding-left:12px; border-left:3px solid var(--line) }
+    .body ul,.body ol { padding-left:24px }
+    .body code { font-family:ui-monospace,SFMono-Regular,Consolas,monospace }
+    .body :not(pre)>code { padding:2px 5px; background:#242d36; border-radius:4px }
+    .body a { color:#79baff }
+    .composer { padding:10px 12px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:#12181e }
+    .compose { width:100%; min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; max-width:780px; margin:auto }
+    textarea { width:100%; min-width:0; min-height:54px; max-height:32vh; padding:11px; resize:vertical }
+    #send { align-self:stretch; background:var(--accent); color:#092017; border-color:var(--accent); font-weight:700; min-width:72px }
+    #send:disabled { opacity:.5; cursor:not-allowed }
+    #hint { display:block; max-width:780px; margin:5px auto 0; color:var(--muted); font-size:11px }
+    #approvals { overflow-wrap:anywhere }
+    .approval { width:100%; max-width:780px; margin:8px auto; padding:12px; border:1px solid #a88645; border-radius:8px; background:#282316 }
+    .approval pre { white-space:pre-wrap; overflow-wrap:anywhere; color:#e6d7b5; font-size:12px }
+    .approval button { margin-right:8px }
+    @media(max-width:600px) { .message { margin-bottom:14px } header { padding:11px 13px } #messages { padding:12px 10px } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header><h1><a href="/" style="color:inherit;text-decoration:none">Codex 对话</a></h1><span id="status">正在连接</span></header>
+    <div class="selectrow"><select id="threads" aria-label="选择 Codex 对话"><option value="">加载桌面会话…</option></select><button id="refresh" type="button">刷新</button></div>
+    <main id="messages"><p class="empty">选择一个桌面 Codex 会话查看对话</p></main>
+    <div id="approvals"></div>
+    <div class="composer"><div class="compose"><textarea id="input" placeholder="给这个 Codex 会话发送消息…" spellcheck="false"></textarea><button id="send" disabled>发送</button></div><span id="hint">消息会进入当前选择的 Codex 会话</span></div>
+  </div>
+  <script type="module">
+    import { marked } from '/vendor/marked.mjs';
+    import DOMPurify from '/vendor/purify.mjs';
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token') || localStorage.getItem('codex-remote-token') || '';
+    if (token) localStorage.setItem('codex-remote-token', token);
+    if (params.has('token')) history.replaceState(null, '', location.pathname);
+    const headers = () => ({ Authorization: `Bearer ${token}` });
+    const api = (url, options={}) => fetch(url, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+    const threadsEl = document.getElementById('threads');
+    const messagesEl = document.getElementById('messages');
+    const statusEl = document.getElementById('status');
+    const sendEl = document.getElementById('send');
+    const inputEl = document.getElementById('input');
+    const approvalEl = document.getElementById('approvals');
+    let selectedId = sessionStorage.getItem('codex-selected-thread') || '';
+    let sending = false;
+    let selectedThread = null;
+    let liveMessage = null;
+    let eventSourceReader;
+    let connectorMode = '';
+
+    function showNoThreads() {
+      messagesEl.replaceChildren();
+      const empty = document.createElement('div'); empty.className = 'empty';
+      empty.textContent = connectorMode === 'local-session'
+        ? '没有找到已保存的 Codex 会话。请确认桌面连接器正在运行，然后点“刷新”。'
+        : '连接器在线，但没有提供会话列表。请关闭旧窗口，双击项目里的“一键启动.bat”，再用启动窗口显示的新链接打开。';
+      messagesEl.append(empty);
+    }
+
+    function renderMarkdown(text) {
+      return DOMPurify.sanitize(marked.parse(String(text || ''), { breaks: true, gfm: true }));
+    }
+    function contentText(value) {
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value)) return value.map(contentText).filter(Boolean).join('\n');
+      if (!value || typeof value !== 'object') return '';
+      if (typeof value.text === 'string') return value.text;
+      if (typeof value.value === 'string') return value.value;
+      return contentText(value.content || value.input || value.parts || value.output || '');
+    }
+    function itemKind(item) {
+      const type = String(item?.type || '').toLowerCase();
+      if (type.includes('user') || type.includes('input')) return 'user';
+      if (type.includes('agentmessage') || type.includes('assistant')) return 'assistant';
+      return '';
+    }
+    function itemsFromThread(thread) {
+      const turns = thread?.turns || thread?.conversation?.turns || [];
+      const entries = [];
+      for (const turn of turns) {
+        for (const item of turn.items || []) {
+          const role = itemKind(item);
+          const text = contentText(item.text || item.content || item.input || item.message || '');
+          if (role && text.trim()) entries.push({ role, text, id: item.id || `${turn.id}-${entries.length}` });
+        }
+      }
+      return entries;
+    }
+    function threadTitle(thread) {
+      return String(thread?.title || thread?.name || '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    function isInternalTitle(title) { return /^guardian\s+review\b/i.test(title) || /^<environment_context\b/i.test(title); }
+    function isIdTitle(title) { return /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(title); }
+    function updatedTime(thread) {
+      const value = thread.updatedAt || thread.updated_at || thread.createdAt || thread.created_at || 0;
+      const time = typeof value === 'number' ? value : Date.parse(value);
+      return Number.isFinite(time) ? time : 0;
+    }
+    function projectName(thread) {
+      if (Object.hasOwn(thread, 'projectName')) return String(thread.projectName || '');
+      const cwd = String(thread.cwd || '').replace(/[\\/]+$/, '');
+      if (!cwd) return '';
+      const pieces = cwd.split(/[\\/]/).filter(Boolean);
+      if (pieces.length <= 3) return '';
+      return pieces.at(-1);
+    }
+    function appendThreadOption(group, thread, label) {
+      const option = document.createElement('option');
+      option.value = thread.id;
+      option.textContent = label;
+      group.append(option);
+    }
+    function addMessage(role, text, id) {
+      const article = document.createElement('article');
+      article.className = `message ${role === 'user' ? 'user' : 'assistant'}`;
+      article.dataset.id = id || '';
+      const label = document.createElement('div');
+      label.className = 'role'; label.textContent = role === 'user' ? '你' : 'Codex';
+      const body = document.createElement('div'); body.className = 'body'; body.innerHTML = renderMarkdown(text);
+      article.append(label, body); messagesEl.append(article);
+      return article;
+    }
+    function showThread(thread) {
+      selectedThread = thread;
+      selectedId = thread?.id || selectedId;
+      liveMessage = null;
+      messagesEl.replaceChildren();
+      const entries = itemsFromThread(thread);
+      if (!entries.length) {
+        const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = '会话已打开，等待消息'; messagesEl.append(empty);
+      } else for (const entry of entries) addMessage(entry.role, entry.text, entry.id);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      sendEl.disabled = sending || !selectedId;
+    }
+    async function refreshThreads(keepSelection=true) {
+      const response = await api('/api/threads');
+      if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
+      const data = await response.json();
+      const old = keepSelection ? (selectedId || threadsEl.value) : '';
+      threadsEl.replaceChildren();
+      const threads = (data.threads || [])
+        .filter((thread) => thread?.id && threadTitle(thread) && !isIdTitle(threadTitle(thread)) && !isInternalTitle(threadTitle(thread)))
+        .sort((a, b) => updatedTime(b) - updatedTime(a));
+      const projects = new Map();
+      const recentThreads = [];
+      for (const thread of threads) {
+        const name = projectName(thread);
+        if (!name) { recentThreads.push(thread); continue; }
+        const key = name.toLocaleLowerCase();
+        const current = projects.get(key);
+        if (!current || updatedTime(thread) > updatedTime(current.thread)) projects.set(key, { name, thread });
+      }
+      const orderedProjects = [...projects.values()].sort((a, b) => updatedTime(b.thread) - updatedTime(a.thread));
+      if (orderedProjects.length) {
+        const group = document.createElement('optgroup');
+        group.label = '项目';
+        for (const project of orderedProjects) appendThreadOption(group, project.thread, project.name);
+        threadsEl.append(group);
+      }
+      if (recentThreads.length) {
+        const recent = document.createElement('optgroup');
+        recent.label = '最近';
+        for (const thread of recentThreads) appendThreadOption(recent, thread, threadTitle(thread));
+        threadsEl.append(recent);
+      }
+      if (!threadsEl.options.length) {
+        const option = document.createElement('option'); option.value = ''; option.textContent = '没有找到 Codex 会话'; threadsEl.append(option);
+        sendEl.disabled = true;
+        showNoThreads();
+        return;
+      }
+      const next = [...threadsEl.options].some((option) => option.value === old) ? old : threadsEl.options[0].value;
+      threadsEl.value = next;
+      if (next && (next !== selectedId || !selectedThread)) await chooseThread(next);
+    }
+    async function chooseThread(threadId) {
+      if (!threadId) return;
+      selectedId = threadId; sessionStorage.setItem('codex-selected-thread', threadId); sendEl.disabled = sending; statusEl.textContent = '读取会话…';
+      const response = await api('/api/select-thread', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({threadId}) });
+      if (!response.ok && response.status !== 409) throw new Error((await response.json()).error || `HTTP ${response.status}`);
+      const cached = await api(`/api/thread?threadId=${encodeURIComponent(threadId)}`);
+      if (cached.ok) {
+        const data = await cached.json();
+        if (data.thread?.id === threadId) showThread(data.thread);
+      }
+    }
+    function handleAppEvent(event) {
+      const p = event.params || {};
+      const threadId = p.threadId || p.thread?.id;
+      if (threadId && selectedId && threadId !== selectedId) return;
+      if (event.method === 'item/started' && p.item?.type === 'userMessage') {
+        const text=contentText(p.item.content || p.item.text);
+        const pending=[...messagesEl.querySelectorAll('.message.user')].find(item=>item.dataset.pending==='true' && item.dataset.text===text);
+        if(pending) {pending.dataset.id=p.item.id;delete pending.dataset.pending;}
+        else if (text && ![...messagesEl.querySelectorAll('.message.user')].some(item=>item.dataset.id===p.item.id)) addMessage('user',text,p.item.id);
+      } else if (event.method === 'item/agentMessage/delta') {
+        const delta = p.delta || '';
+        const id = p.itemId || 'live-assistant';
+        if (!liveMessage || liveMessage.dataset.id !== id) liveMessage = addMessage('assistant', '', id);
+        const body = liveMessage.querySelector('.body');
+        const text = liveMessage.dataset.text = (liveMessage.dataset.text || '') + delta;
+        body.innerHTML = renderMarkdown(text);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } else if (event.method === 'error') statusEl.textContent = p.error?.message || p.message || 'Codex 执行失败，请查看电脑连接日志';
+      else if (event.method === 'turn/started') statusEl.textContent = 'Codex 正在生成';
+      else if (event.method === 'turn/completed') {
+        statusEl.textContent = p.turn?.error?.message || (p.turn?.status==='failed' ? '任务执行失败' : '任务已完成');
+        if (selectedId) api('/api/select-thread', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({threadId:selectedId}) });
+      }
+    }
+    function showApproval(request) {
+      const method = request.method || '';
+      const supportsDecision = method.includes('requestApproval');
+      if (!supportsDecision) {
+        statusEl.textContent = `Codex 正在等待桌面确认：${method}`;
+        return;
+      }
+      const card = document.createElement('section'); card.className = 'approval';
+      const title = document.createElement('strong'); title.textContent = method.includes('commandExecution') ? 'Codex 请求执行命令' : 'Codex 请求应用文件修改';
+      const details = document.createElement('pre'); details.textContent = JSON.stringify(request.params || {}, null, 2);
+      card.append(title, details);
+      for (const [label, decision] of [['允许一次','accept'],['拒绝','decline']]) {
+        const button = document.createElement('button'); button.textContent = label;
+        button.onclick = async () => {
+          await api('/api/resolve', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:request.id,decision})});
+          card.remove();
+        };
+        card.append(button);
+      }
+      approvalEl.append(card);
+    }
+    async function sendMessage() {
+      const text = inputEl.value.trim(); if (!text || !selectedId || sending) return;
+      sending = true; sendEl.disabled = true; statusEl.textContent = '正在等待电脑接收…';
+      const threadId=selectedId;
+      try {
+        const response = await api('/api/message',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({threadId,text,requestId:crypto.randomUUID()})});
+        if (!response.ok) throw new Error((await response.json()).error || '发送失败');
+        const result=await response.json();
+        if (inputEl.value.trim()===text) inputEl.value = '';
+        if (selectedId===threadId && ![...messagesEl.querySelectorAll('.message.user')].some(item=>item.querySelector('.body')?.textContent?.trim()===text)) { const bubble=addMessage('user',text,result.turnId ? result.turnId+'-user' : 'sent-user'); bubble.dataset.pending='true'; }
+        statusEl.textContent = '桌面 Codex 已接收指令，执行内容会自动同步';
+      } catch (error) { statusEl.textContent = error.message; }
+      finally { sending = false; sendEl.disabled = !selectedId; }
+    }
+    threadsEl.addEventListener('change', () => chooseThread(threadsEl.value).catch(e=>statusEl.textContent=e.message));
+    document.getElementById('refresh').addEventListener('click', () => refreshThreads(false).catch((e) => statusEl.textContent = e.message));
+    sendEl.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', (event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendMessage(); } });
+    async function connectEvents() {
+      while (token) {
+        try {
+          const response = await api('/api/events'); if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+          const reader = response.body.getReader(); const decoder = new TextDecoder(); let pending = '';
+          while (true) {
+            const {value,done} = await reader.read(); if (done) break;
+            pending += decoder.decode(value,{stream:true}).replaceAll('\r\n','\n');
+            const blocks = pending.split('\n\n'); pending = blocks.pop() || '';
+            for (const block of blocks) {
+              const type = block.match(/^event:\s*(.+)$/m)?.[1]; const raw = block.match(/^data:\s*(.+)$/m)?.[1]; if (!type || !raw) continue;
+              const data = JSON.parse(raw);
+              if (type === 'status') {
+                connectorMode = data.mode || '';
+                if (!sending) statusEl.textContent = !data.connected ? '桌面连接器未连接' : data.mode === 'local-session' ? '本地会话同步已连接' : data.running ? 'Codex 同步器已连接' : '桌面连接器正在启动';
+              }
+              if (type === 'threads') refreshThreads().catch((e) => statusEl.textContent = e.message);
+              if (type === 'thread' && data.thread?.id === selectedId) showThread(data.thread);
+              if (type === 'app-event') handleAppEvent(data);
+              if (type === 'server-request') showApproval(data);
+              if (type === 'app-error') statusEl.textContent = data.message;
+            }
+          }
+        } catch (error) { statusEl.textContent = '同步断开，正在重连'; }
+        await new Promise((resolve) => setTimeout(resolve,2000));
+      }
+    }
+    if (!token) statusEl.textContent = '请用带令牌的手机链接打开';
+    else { refreshThreads().catch(() => {}); connectEvents(); }
+  </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Codex 远程</string>
+    <string name="title_activity_main">Codex 远程</string>
+    <string name="package_name">com.codexremote.mobile</string>
+    <string name="custom_url_scheme">com.codexremote.mobile</string>
+</resources>
